@@ -36,12 +36,21 @@ export const CATEGORIES = [
   { slug: "the-practice", name: "The Practice", description: "Practical tools, routines, and embodiment practices for HSPs" },
 ];
 
+function filterPublished(articles: ArticleIndex[]): ArticleIndex[] {
+  const now = new Date();
+  return articles.filter((a) => new Date(a.dateISO) <= now);
+}
+
 export function getAllArticles(): ArticleIndex[] {
+  return filterPublished(articlesIndex as ArticleIndex[]);
+}
+
+export function getAllArticlesUnfiltered(): ArticleIndex[] {
   return articlesIndex as ArticleIndex[];
 }
 
 export function getArticlesByCategory(category: string): ArticleIndex[] {
-  return (articlesIndex as ArticleIndex[]).filter((a) => a.category === category);
+  return filterPublished((articlesIndex as ArticleIndex[]).filter((a) => a.category === category));
 }
 
 export function getCategoryInfo(slug: string) {
@@ -66,13 +75,13 @@ export async function getFullArticle(category: string, slug: string): Promise<Ar
 }
 
 export function getRecentArticles(count: number = 10): ArticleIndex[] {
-  return [...(articlesIndex as ArticleIndex[])]
+  return filterPublished([...(articlesIndex as ArticleIndex[])])
     .sort((a, b) => new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime())
     .slice(0, count);
 }
 
 export function getRelatedArticles(currentSlug: string, category: string, count: number = 4): ArticleIndex[] {
-  return (articlesIndex as ArticleIndex[])
+  return filterPublished((articlesIndex as ArticleIndex[]))
     .filter((a) => a.slug !== currentSlug)
     .filter((a) => a.category === category)
     .sort(() => Math.random() - 0.5)

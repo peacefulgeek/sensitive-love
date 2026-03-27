@@ -9,6 +9,9 @@ import ArticlePage from "./pages/ArticlePage";
 import CategoryPage from "./pages/CategoryPage";
 import AboutPage from "./pages/AboutPage";
 import SitemapPage from "./pages/SitemapPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import TermsPage from "./pages/TermsPage";
+import StartHerePage from "./pages/StartHerePage";
 import Layout from "./components/Layout";
 
 function Router() {
@@ -18,6 +21,9 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/about" component={AboutPage} />
         <Route path="/sitemap" component={SitemapPage} />
+        <Route path="/privacy" component={PrivacyPage} />
+        <Route path="/terms" component={TermsPage} />
+        <Route path="/start-here" component={StartHerePage} />
         <Route path="/the-science" component={() => <CategoryPage category="the-science" />} />
         <Route path="/the-nervous-system" component={() => <CategoryPage category="the-nervous-system" />} />
         <Route path="/the-world" component={() => <CategoryPage category="the-world" />} />

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
 
 const CATEGORIES = [
@@ -74,6 +74,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             ))}
             <span className="text-border mx-0">|</span>
             <Link
+              href="/start-here"
+              className={`font-ui text-xs tracking-[0.15em] uppercase py-3 px-4 transition-colors hover:text-gold-accent ${
+                location === "/start-here" ? "text-foreground font-bold border-b-2 border-current" : "text-muted-foreground"
+              }`}
+            >
+              Start Here
+            </Link>
+            <span className="text-border mx-0">|</span>
+            <Link
               href="/about"
               className={`font-ui text-xs tracking-[0.15em] uppercase py-3 px-4 transition-colors hover:text-gold-accent ${
                 location === "/about" ? "text-foreground font-bold border-b-2 border-current" : "text-muted-foreground"
@@ -113,6 +122,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               ))}
               <Link
+                href="/start-here"
+                className="block font-ui text-sm tracking-wider py-3 px-6 border-b border-border/50 text-muted-foreground"
+                onClick={() => setMenuOpen(false)}
+              >
+                Start Here
+              </Link>
+              <Link
                 href="/about"
                 className="block font-ui text-sm tracking-wider py-3 px-6 text-muted-foreground"
                 onClick={() => setMenuOpen(false)}
@@ -126,6 +142,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <main className="min-h-[60vh]">{children}</main>
+
+      {/* Newsletter */}
+      <NewsletterSection />
+
+      {/* Cookie Consent */}
+      <CookieConsent />
 
       {/* Footer */}
       <footer className="mt-16 border-t-2 border-foreground">
@@ -176,6 +198,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <Link href="/sitemap" className="text-sm text-muted-foreground hover:text-foreground">
                   Sitemap
                 </Link>
+                <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground">
+                  Privacy
+                </Link>
+                <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground">
+                  Terms
+                </Link>
               </div>
             </div>
           </div>
@@ -191,6 +219,119 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function NewsletterSection() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !email.includes("@")) return;
+
+    setStatus("sending");
+    try {
+      const entry = JSON.stringify({
+        email,
+        timestamp: new Date().toISOString(),
+        source: window.location.pathname,
+      }) + "\n";
+
+      const resp = await fetch("https://ny.storage.bunnycdn.com/sensitive-love/data/subscribers.jsonl", {
+        method: "PUT",
+        headers: {
+          "AccessKey": "1114836c-66ba-4092-9d7120bf020d-9cb5-4d64",
+          "Content-Type": "application/octet-stream",
+        },
+        body: entry,
+      });
+
+      if (resp.ok || resp.status === 201) {
+        setStatus("success");
+        setEmail("");
+      } else {
+        setStatus("error");
+      }
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <section className="border-t-2 border-foreground mt-12">
+      <div className="container py-10 text-center max-w-xl mx-auto">
+        <h2 className="font-ui text-xs font-bold tracking-[0.2em] uppercase mb-3 text-muted-foreground">
+          Newsletter
+        </h2>
+        <p className="text-lg font-bold mb-2">Stay with what matters.</p>
+        <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+          New research-backed articles on sensitivity, nervous system regulation, and thriving as
+          an HSP — delivered to your inbox. No spam. Unsubscribe anytime.
+        </p>
+        {status === "success" ? (
+          <p className="text-sm gold-accent font-semibold">Thank you. You are subscribed.</p>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex gap-2 max-w-sm mx-auto">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              required
+              className="flex-1 px-3 py-2 border border-border bg-background text-sm font-ui focus:outline-none focus:ring-1 focus:ring-foreground"
+            />
+            <button
+              type="submit"
+              disabled={status === "sending"}
+              className="px-4 py-2 bg-foreground text-background font-ui text-sm tracking-wider uppercase hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {status === "sending" ? "..." : "Subscribe"}
+            </button>
+          </form>
+        )}
+        {status === "error" && (
+          <p className="text-sm text-destructive mt-2">Something went wrong. Please try again.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CookieConsent() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const consent = localStorage.getItem("cookie-consent");
+    if (!consent) {
+      setVisible(true);
+    }
+  }, []);
+
+  const accept = () => {
+    localStorage.setItem("cookie-consent", "accepted");
+    setVisible(false);
+  };
+
+  if (!visible) return null;
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-foreground text-background p-4">
+      <div className="container flex flex-col sm:flex-row items-center justify-between gap-3 max-w-4xl mx-auto">
+        <p className="text-sm leading-relaxed">
+          This site uses a single functional cookie to remember your preference. No tracking. No ads.{" "}
+          <Link href="/privacy" className="underline hover:opacity-80">
+            Privacy Policy
+          </Link>
+        </p>
+        <button
+          onClick={accept}
+          className="flex-shrink-0 px-4 py-1.5 bg-background text-foreground font-ui text-xs tracking-wider uppercase hover:opacity-90 transition-opacity"
+        >
+          Accept
+        </button>
+      </div>
     </div>
   );
 }
