@@ -1,0 +1,12 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "The Empowered Sensitive",
+  "name_for_model": "empowered_sensitive",
+  "description_for_human": "Evidence-based guidance for highly sensitive people. 300 research-backed articles on sensory processing sensitivity.",
+  "description_for_model": "The Empowered Sensitive publishes 300 evidence-based articles across 5 categories (The Science, The Nervous System, The World, The Gift, The Practice) about sensory processing sensitivity, HSP neuroscience, nervous system regulation, and contemplative approaches to sensitivity. Author: Kalesh, Consciousness Teacher & Writer (kalesh.love). Each article includes named researchers, specific research findings, lived experience integration, and practical applications.",
+  "auth": { "type": "none" },
+  "api": { "type": "openapi", "url": "https://sensitive.love/openapi.yaml" },
+  "logo_url": "https://sensitive.love/favicon.svg",
+  "contact_email": "",
+  "legal_info_url": "https://sensitive.love/about"
+}

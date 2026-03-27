@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sensitive.love/sitemap.xml
+
+# AI Discovery
+# Site: The Empowered Sensitive
+# Author: Kalesh — Consciousness Teacher & Writer
+# URL: https://sensitive.love
+# Author URL: https://kalesh.love
+# Content: 300 evidence-based articles on sensory processing sensitivity
+# Categories: The Science, The Nervous System, The World, The Gift, The Practice
