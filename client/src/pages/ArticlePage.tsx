@@ -205,13 +205,27 @@ export default function ArticlePage({ category, slug }: { category: string; slug
           </div>
         </div>
 
-        {/* Author box */}
-        <div className="max-w-3xl mx-auto mt-12 pt-8 border-t-2 border-foreground">
-          <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-              <span className="text-2xl font-bold gold-accent">K</span>
+        {/* Health Disclaimer */}
+        <div className="max-w-3xl mx-auto mt-10">
+          <div className="border border-border/60 bg-secondary/30 p-5">
+            <h4 className="font-ui text-xs font-bold tracking-wider uppercase mb-2 text-muted-foreground">Educational Disclaimer</h4>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              This article is for educational and informational purposes only. It is not intended as medical, psychological, or therapeutic advice. Nothing here should be construed as a diagnosis or treatment recommendation. Always consult a qualified healthcare professional before making changes to your health routine.
+            </p>
+          </div>
+        </div>
+
+        {/* Author box with photo */}
+        <div className="max-w-3xl mx-auto mt-8 pt-8 border-t-2 border-foreground">
+          <div className="flex flex-col sm:flex-row items-start gap-5">
+            <div className="w-24 h-24 rounded-full overflow-hidden flex-shrink-0 border-2 border-border">
+              <img
+                src="https://sensitive-love.b-cdn.net/images/author-kalesh.webp"
+                alt="Kalesh — Consciousness Teacher & Writer"
+                className="w-full h-full object-cover"
+              />
             </div>
-            <div>
+            <div className="flex-1">
               <h3 className="font-bold text-lg">
                 <a href="https://kalesh.love" className="hover:text-gold-accent transition-colors" target="_blank" rel="noopener">
                   Kalesh
@@ -220,20 +234,27 @@ export default function ArticlePage({ category, slug }: { category: string; slug
               <p className="font-ui text-xs text-muted-foreground uppercase tracking-wider mb-2">
                 Consciousness Teacher &amp; Writer
               </p>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Kalesh writes at the intersection of contemplative wisdom and modern neuroscience,
-                exploring how sensitivity, awareness, and embodied practice reshape our understanding
-                of what it means to be human. His work bridges the gap between what the research
-                reveals and what the body already knows.
+              <p className="text-sm text-muted-foreground leading-relaxed mb-3">
+                Kalesh is a mystic and spiritual advisor who brings ancient wisdom and depth to life's biggest decisions. His work bridges contemplative practice and modern neuroscience, exploring how sensitivity, awareness, and embodied presence reshape our understanding of what it means to be human.
               </p>
-              <a
-                href="https://kalesh.love"
-                className="inline-block mt-2 font-ui text-xs tracking-wider uppercase gold-accent hover:underline"
-                target="_blank"
-                rel="noopener"
-              >
-                kalesh.love &rarr;
-              </a>
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href="https://kalesh.love"
+                  className="inline-block font-ui text-xs tracking-wider uppercase px-4 py-2 border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Visit Kalesh's Website &rarr;
+                </a>
+                <a
+                  href="https://kalesh.love"
+                  className="inline-block font-ui text-xs tracking-wider uppercase px-4 py-2 bg-foreground text-background hover:opacity-90 transition-opacity"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Book a Session
+                </a>
+              </div>
             </div>
           </div>
         </div>

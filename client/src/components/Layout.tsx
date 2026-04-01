@@ -74,6 +74,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             ))}
             <span className="text-border mx-0">|</span>
             <Link
+              href="/tools"
+              className={`font-ui text-xs tracking-[0.15em] uppercase py-3 px-4 transition-colors hover:text-gold-accent ${
+                location === "/tools" ? "text-foreground font-bold border-b-2 border-current" : "text-muted-foreground"
+              }`}
+            >
+              Tools
+            </Link>
+            <span className="text-border mx-0">|</span>
+            <Link
+              href="/quizzes"
+              className={`font-ui text-xs tracking-[0.15em] uppercase py-3 px-4 transition-colors hover:text-gold-accent ${
+                location === "/quizzes" ? "text-foreground font-bold border-b-2 border-current" : "text-muted-foreground"
+              }`}
+            >
+              Quizzes
+            </Link>
+            <span className="text-border mx-0">|</span>
+            <Link
               href="/start-here"
               className={`font-ui text-xs tracking-[0.15em] uppercase py-3 px-4 transition-colors hover:text-gold-accent ${
                 location === "/start-here" ? "text-foreground font-bold border-b-2 border-current" : "text-muted-foreground"
@@ -121,6 +139,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   {cat.name}
                 </Link>
               ))}
+              <Link
+                href="/tools"
+                className="block font-ui text-sm tracking-wider py-3 px-6 border-b border-border/50 text-muted-foreground"
+                onClick={() => setMenuOpen(false)}
+              >
+                Tools We Recommend
+              </Link>
+              <Link
+                href="/quizzes"
+                className="block font-ui text-sm tracking-wider py-3 px-6 border-b border-border/50 text-muted-foreground"
+                onClick={() => setMenuOpen(false)}
+              >
+                Quizzes
+              </Link>
+              <Link
+                href="/assessments"
+                className="block font-ui text-sm tracking-wider py-3 px-6 border-b border-border/50 text-muted-foreground"
+                onClick={() => setMenuOpen(false)}
+              >
+                Assessments
+              </Link>
               <Link
                 href="/start-here"
                 className="block font-ui text-sm tracking-wider py-3 px-6 border-b border-border/50 text-muted-foreground"
@@ -204,12 +243,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground">
                   Terms
                 </Link>
+                <Link href="/tools" className="text-sm text-muted-foreground hover:text-foreground">
+                  Tools
+                </Link>
+                <Link href="/quizzes" className="text-sm text-muted-foreground hover:text-foreground">
+                  Quizzes
+                </Link>
+                <Link href="/assessments" className="text-sm text-muted-foreground hover:text-foreground">
+                  Assessments
+                </Link>
               </div>
             </div>
           </div>
 
+          {/* Amazon Associate Disclosure */}
+          <div className="thin-rule mt-6 pt-3 text-center">
+            <p className="font-ui text-xs text-muted-foreground/70">
+              As an Amazon Associate I earn from qualifying purchases.
+            </p>
+          </div>
+
           {/* Bottom rule */}
-          <div className="thin-rule mt-8 pt-4 flex flex-col md:flex-row justify-between items-center gap-2 font-ui text-xs text-muted-foreground">
+          <div className="thin-rule mt-4 pt-4 flex flex-col md:flex-row justify-between items-center gap-2 font-ui text-xs text-muted-foreground">
             <span>&copy; {today.getFullYear()} The Empowered Sensitive. All rights reserved.</span>
             <span>
               <a href="https://kalesh.love" className="hover:text-foreground" target="_blank" rel="noopener">

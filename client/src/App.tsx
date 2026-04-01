@@ -12,6 +12,9 @@ import SitemapPage from "./pages/SitemapPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import StartHerePage from "./pages/StartHerePage";
+import ToolsPage from "./pages/ToolsPage";
+import QuizzesPage from "./pages/QuizzesPage";
+import AssessmentsPage from "./pages/AssessmentsPage";
 import Layout from "./components/Layout";
 
 function Router() {
@@ -24,6 +27,9 @@ function Router() {
         <Route path="/privacy" component={PrivacyPage} />
         <Route path="/terms" component={TermsPage} />
         <Route path="/start-here" component={StartHerePage} />
+        <Route path="/tools" component={ToolsPage} />
+        <Route path="/quizzes" component={QuizzesPage} />
+        <Route path="/assessments" component={AssessmentsPage} />
         <Route path="/the-science" component={() => <CategoryPage category="the-science" />} />
         <Route path="/the-nervous-system" component={() => <CategoryPage category="the-nervous-system" />} />
         <Route path="/the-world" component={() => <CategoryPage category="the-world" />} />

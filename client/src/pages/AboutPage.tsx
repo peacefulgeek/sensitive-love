@@ -121,17 +121,42 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* Contact */}
+        {/* CTA */}
         <section className="mb-10">
-          <h2 className="text-xl font-bold mb-4 pb-2 border-b border-border">Connect</h2>
-          <div className="article-body">
-            <p>
-              The Empowered Sensitive is a publication by{" "}
-              <a href="https://kalesh.love" target="_blank" rel="noopener">Kalesh</a>.
-              For inquiries, collaborations, or to learn more about Kalesh's work in consciousness
-              teaching and writing, visit{" "}
-              <a href="https://kalesh.love" target="_blank" rel="noopener">kalesh.love</a>.
-            </p>
+          <h2 className="text-xl font-bold mb-4 pb-2 border-b border-border">Work with Kalesh</h2>
+          <div className="flex flex-col sm:flex-row items-start gap-5">
+            <div className="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 border-2 border-border">
+              <img
+                src="https://sensitive-love.b-cdn.net/images/author-kalesh.webp"
+                alt="Kalesh"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div>
+              <p className="text-muted-foreground leading-relaxed mb-4">
+                Kalesh is a mystic and spiritual advisor who brings ancient wisdom and depth to life's
+                biggest decisions. For guided sessions, contemplative resources, and deeper exploration
+                of the themes covered on this site, visit his website.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href="https://kalesh.love"
+                  className="inline-block font-ui text-xs tracking-wider uppercase px-4 py-2 border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Visit Kalesh's Website &rarr;
+                </a>
+                <a
+                  href="https://kalesh.love"
+                  className="inline-block font-ui text-xs tracking-wider uppercase px-4 py-2 bg-foreground text-background hover:opacity-90 transition-opacity"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Book a Session
+                </a>
+              </div>
+            </div>
           </div>
         </section>
       </div>

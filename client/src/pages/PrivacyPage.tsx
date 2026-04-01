@@ -58,7 +58,7 @@ export default function PrivacyPage() {
           <h2>Your Rights</h2>
           <p>
             You have the right to request access to, correction of, or deletion of your personal
-            data at any time. To exercise these rights, contact us through{" "}
+            data at any time. To exercise these rights, visit{" "}
             <a href="https://kalesh.love" target="_blank" rel="noopener">kalesh.love</a>.
           </p>
 
@@ -67,6 +67,17 @@ export default function PrivacyPage() {
             This site does not use Google Analytics, Facebook Pixel, or any other third-party
             tracking scripts. We do not track your browsing behavior across sites. We do not
             serve advertisements.
+          </p>
+
+          <h2>Affiliate Disclosure</h2>
+          <p>
+            As an Amazon Associate I earn from qualifying purchases.
+          </p>
+          <p>
+            This site is a participant in the Amazon Services LLC Associates Program, an affiliate
+            advertising program designed to provide a means for sites to earn advertising fees by
+            advertising and linking to Amazon.com. Some links on this site are affiliate links,
+            meaning we may earn a small commission at no additional cost to you.
           </p>
 
           <h2>Changes to This Policy</h2>
