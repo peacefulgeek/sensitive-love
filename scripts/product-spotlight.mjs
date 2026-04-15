@@ -1,18 +1,31 @@
 /**
  * Product Spotlight Generator
  * 
- * Generates product review articles for HSP-relevant products.
+ * Generates product review articles for HSP-relevant products using Claude API.
  * Designed to run as a cron job on Render.
  * 
  * Schedule: Weekly (configurable)
  * Output: New article JSON added to the appropriate category data file
  * 
- * NOTE: This is a template. In production, it would use an LLM API
- * to generate unique review content. For now, it contains the
- * product database and article structure.
+ * Env vars required:
+ *   ANTHROPIC_API_KEY - Claude API key
  */
 
 const PRODUCT_SPOTLIGHT_ENABLED = false;
+
+const BANNED_WORDS = [
+  "profound", "transformative", "holistic", "nuanced", "multifaceted",
+  "delve", "tapestry", "landscape", "paradigm", "synergy", "leverage",
+  "utilize", "embark", "foster", "resonate", "unlock", "empower",
+  "navigate", "unpack", "uncover"
+];
+
+const INTERJECTIONS = [
+  "Stay with me here.", "I know, I know.", "Wild, right?",
+  "Think about that for a second.", "Here is the thing.",
+  "And this is where it gets interesting.", "Bear with me on this.",
+  "Let that land for a moment.", "This part matters.", "Notice something?"
+];
 
 const PRODUCT_DATABASE = [
   {
@@ -99,6 +112,123 @@ const PRODUCT_DATABASE = [
 
 const TAG = "spankyspinola-20";
 
+function pickRandom(arr, n) {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
+async function generateProductReview(product) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  if (!ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY not set in environment");
+  }
+
+  const interjections = pickRandom(INTERJECTIONS, 2);
+  const taggedUrl = `https://www.amazon.com/dp/${product.asin}?tag=${TAG}`;
+
+  const prompt = `Write a 1400-1800 word product review article titled "Product Spotlight: ${product.name} for Sensitive People" for The Empowered Sensitive (sensitive.love).
+
+Author voice: Kalesh - Consciousness Teacher & Writer (kalesh.love)
+
+=== VOICE RULES (CRITICAL) ===
+
+1. KALESH VOICE:
+- Long, unfolding sentences that build and turn. Average 18-28 words per sentence.
+- Pattern: Long -> Long -> Long (with internal comma rhythm) -> Short drop -> Long -> Short drop.
+- Intellectual warmth. Contemplative. Trusts the reader to arrive at the insight.
+- Uses "we" and "one" more than "you"
+- Builds analogies across 2-3 sentences before revealing the point
+- Ends sections with questions that open rather than close
+
+2. ABSOLUTELY NO EMDASH: Do NOT use em dash or en dash anywhere. Use ..., -, or ~ instead.
+
+3. BANNED WORDS (do NOT use ANY): ${BANNED_WORDS.join(", ")}
+
+4. Include these 2 interjections naturally: "${interjections[0]}" and "${interjections[1]}"
+
+5. SENTENCE LENGTH VARIATION: Mix 5-word sentences with 30-word sentences.
+
+6. CONVERSATIONAL TONE: Write like a real person, not a textbook.
+
+Product details:
+- Name: ${product.name}
+- Amazon URL: ${taggedUrl}
+- Price range: ${product.priceRange}
+- Rating: ${product.rating}
+- Keywords: ${product.keywords.join(", ")}
+
+Structure:
+- Opening: Why this product matters for sensitive people (connect to nervous system science)
+- What it does and how it works
+- Who benefits most
+- Practical tips for use
+- Honest limitations
+- Healing Journey section at end with 3-4 related Amazon products
+
+Include the main product link 2-3 times naturally with (paid link) after each.
+Include Amazon Associate disclosure at the bottom.
+Format: HTML with <h2>, <p>, <blockquote>, <a> tags. First paragraph class="drop-cap".
+
+Return JSON:
+{
+  "bodyHtml": "...",
+  "faqs": [{"q": "...", "a": "..."}],
+  "toc": [{"id": "section-id", "title": "Section Title"}],
+  "excerpt": "150 char excerpt",
+  "metaDescription": "155 char meta description"
+}`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8000,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Anthropic API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.content[0].text;
+  
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("No JSON found in response");
+  
+  const result = JSON.parse(jsonMatch[0]);
+
+  // Post-process: strip emdash
+  result.bodyHtml = result.bodyHtml.replace(/—/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
+  result.bodyHtml = result.bodyHtml.replace(/–/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
+
+  // Post-process: strip banned words
+  const replacements = {
+    profound: "deep", transformative: "life-changing", holistic: "whole-person",
+    nuanced: "subtle", multifaceted: "complex", delve: "explore",
+    tapestry: "web", landscape: "terrain", paradigm: "framework",
+    synergy: "connection", leverage: "use", utilize: "use",
+    embark: "begin", foster: "encourage", resonate: "land",
+    unlock: "open", empower: "strengthen", navigate: "move through",
+    unpack: "break down", uncover: "find"
+  };
+  for (const word of BANNED_WORDS) {
+    const regex = new RegExp("\\b" + word + "\\b", "gi");
+    result.bodyHtml = result.bodyHtml.replace(regex, (match) => {
+      const rep = replacements[word] || "meaningful";
+      return match[0] === match[0].toUpperCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep;
+    });
+  }
+
+  return result;
+}
+
 function generateProductSpotlight(product) {
   const slug = `product-spotlight-${product.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}`;
   const taggedUrl = `https://www.amazon.com/dp/${product.asin}?tag=${TAG}`;
@@ -111,10 +241,9 @@ function generateProductSpotlight(product) {
     keywords: product.keywords,
     priceRange: product.priceRange,
     rating: product.rating,
-    // In production, bodyHtml would be generated by LLM
     template: "product-review",
   };
 }
 
 // Export for use by cron worker
-export { PRODUCT_DATABASE, PRODUCT_SPOTLIGHT_ENABLED, generateProductSpotlight, TAG };
+export { PRODUCT_DATABASE, PRODUCT_SPOTLIGHT_ENABLED, generateProductSpotlight, generateProductReview, TAG };

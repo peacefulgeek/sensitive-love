@@ -38,8 +38,60 @@ const NAMED_REFS = [
   "Elaine Aron", "Bianca Acevedo", "Jadzia Jagiellowicz",
   "Michael Pluess", "Ted Zeff", "Julie Bjelland",
   "Jiddu Krishnamurti", "Alan Watts", "Sam Harris",
-  "Sadhguru", "Tara Brach",
+  "Sadhguru", "Tara Brach", "Stephen Porges",
 ];
+
+const BANNED_WORDS = [
+  "profound", "transformative", "holistic", "nuanced", "multifaceted",
+  "delve", "tapestry", "landscape", "paradigm", "synergy", "leverage",
+  "utilize", "embark", "foster", "resonate", "unlock", "empower",
+  "navigate", "unpack", "uncover"
+];
+
+const INTERJECTIONS = [
+  "Stay with me here.", "I know, I know.", "Wild, right?",
+  "Think about that for a second.", "Here is the thing.",
+  "And this is where it gets interesting.", "Bear with me on this.",
+  "Let that land for a moment.", "This part matters.", "Notice something?"
+];
+
+const AFFILIATE_PRODUCTS = [
+  { name: "Loop Quiet Ear Plugs", asin: "B0B1NF6GFQ", desc: "Reusable silicone ear plugs that reduce noise by 26dB" },
+  { name: "YnM Weighted Blanket", asin: "B073429DV2", desc: "Premium weighted blanket with glass beads for deep pressure" },
+  { name: "Zafu Meditation Cushion", asin: "B077P4336Y", desc: "Traditional buckwheat hull meditation cushion" },
+  { name: "Leuchtturm1917 Notebook", asin: "B002TSIMW4", desc: "Premium dotted notebook for journaling and reflection" },
+  { name: "The Highly Sensitive Person", asin: "0553062182", desc: "The foundational book on high sensitivity by Dr. Elaine Aron" },
+  { name: "The Body Keeps the Score", asin: "0143127748", desc: "Brain, mind, and body in the healing of trauma" },
+  { name: "Vitruvi Stone Diffuser", asin: "B074WB2P8V", desc: "Handcrafted porcelain essential oil diffuser" },
+  { name: "Sony WH-1000XM5 Headphones", asin: "B09XS7JWHH", desc: "Industry-leading noise cancelling headphones" },
+  { name: "The Power of Now", asin: "1577314808", desc: "A guide to spiritual enlightenment by Eckhart Tolle" },
+  { name: "Magnesium Glycinate", asin: "B08KH1NY5Z", desc: "Magnesium glycinate for sleep and nervous system support" },
+  { name: "Ashwagandha KSM-66", asin: "B078K14TP1", desc: "Clinically studied ashwagandha root extract" },
+  { name: "Dreamegg White Noise Machine", asin: "B07RWRJ4HW", desc: "Portable white noise machine with 21 soothing sounds" },
+  { name: "Dr Teal's Epsom Salt", asin: "B00WIRT5M2", desc: "Pure epsom salt with lavender for relaxation baths" },
+  { name: "Komuso Breathing Necklace", asin: "B0C4YXJWDP", desc: "Shift breathing necklace for extended exhale practice" },
+];
+
+const AFFILIATE_TAG = "spankyspinola-20";
+
+function pickRandom(arr, n) {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
+function buildHealingJourney(products) {
+  const items = products.map(p =>
+    `<li><a href="https://www.amazon.com/dp/${p.asin}?tag=${AFFILIATE_TAG}" target="_blank" rel="nofollow noopener">${p.name}</a> (paid link) - ${p.desc}</li>`
+  ).join("\n");
+  return `
+<div class="healing-journey-section">
+<h3>The Healing Journey: Tools That Support This Work</h3>
+<ul>
+${items}
+</ul>
+<p class="affiliate-disclosure"><em>As an Amazon Associate, I earn from qualifying purchases. This does not affect editorial independence or the honesty of recommendations.</em></p>
+</div>`;
+}
 
 export async function generateArticle(topic, category) {
   if (!AUTO_GEN_ENABLED) {
@@ -53,28 +105,59 @@ export async function generateArticle(topic, category) {
   }
 
   const ref = NAMED_REFS[Math.floor(Math.random() * NAMED_REFS.length)];
-  const phrases = [];
-  const shuffled = [...KALESH_PHRASES].sort(() => Math.random() - 0.5);
-  for (let i = 0; i < 4; i++) phrases.push(shuffled[i]);
+  const phrases = pickRandom(KALESH_PHRASES, 4);
+  const interjections = pickRandom(INTERJECTIONS, 2);
+  const inlineProducts = pickRandom(AFFILIATE_PRODUCTS, 3);
+  const healingProducts = pickRandom(AFFILIATE_PRODUCTS, 4);
 
-  const prompt = `Write a 2500-2800 word article titled "${topic}" for The Empowered Sensitive (sensitive.love).
+  const inlineProductInstructions = inlineProducts.map(p =>
+    `- ${p.name}: <a href="https://www.amazon.com/dp/${p.asin}?tag=${AFFILIATE_TAG}" target="_blank" rel="nofollow noopener">${p.name}</a> (paid link)`
+  ).join("\n");
+
+  const prompt = `Write a 1400-2000 word article titled "${topic}" for The Empowered Sensitive (sensitive.love).
 
 Category: ${category.name}
 Author voice: Kalesh — Consciousness Teacher & Writer (kalesh.love)
 
-Requirements:
-- Reference researcher: ${ref}
-- Include 3-5 of these phrases naturally: ${phrases.join(" | ")}
-- Varied opener (NOT "In a world where...")
-- 5-7 H2 sections with descriptive headings
-- Include lived experience markers (body sensations, specific scenarios)
-- 30% spiritual/healing thread woven throughout
-- Conclude with varied ending (NOT "This is where...")
-- Include 2-4 FAQ items as JSON at the end
-- Format: HTML body content with proper <h2>, <p>, <blockquote> tags
-- No H1 tag (handled by template)
-- Internal links as: <a href="/category-slug/article-slug">anchor text</a>
-- If backlink article: include one <a href="https://kalesh.love">Kalesh</a> link naturally
+=== VOICE RULES (CRITICAL — follow ALL) ===
+
+1. KALESH VOICE:
+- Long, unfolding sentences that build and turn. Average 18-28 words per sentence.
+- Pattern: Long → Long → Long (with internal comma rhythm) → Short drop → Long → Short drop.
+- Intellectual warmth. Contemplative. Trusts the reader to arrive at the insight.
+- 40% teaching + 30% tender + 20% philosophical + 10% fierce
+- Uses "we" and "one" and "a person who" more than "you"
+- Builds analogies across 2-3 sentences before revealing the point
+- Loves triads: "not the thought, not the thinker, but the space in which both appear"
+- Ends sections with questions that open rather than close
+- References: ${ref}
+
+2. ABSOLUTELY NO EMDASH: Do NOT use — or – anywhere. Use ..., -, or ~ instead. Mix them randomly.
+
+3. BANNED WORDS (do NOT use ANY of these): ${BANNED_WORDS.join(", ")}
+
+4. Include these 2 interjections naturally in the body: "${interjections[0]}" and "${interjections[1]}"
+
+5. Include 3-5 of these phrases naturally: ${phrases.join(" | ")}
+
+6. SENTENCE LENGTH VARIATION: Aggressively vary. Mix 5-word sentences with 30-word sentences. Never start 3 consecutive sentences with the same word.
+
+7. CONVERSATIONAL TONE: Write like a real person having a deep conversation, not like a textbook. Use contractions sometimes. Include personal observations. Make the reader feel seen.
+
+8. Include these 2-3 Amazon product links naturally in the body:
+${inlineProductInstructions}
+
+9. Varied opener (NOT "In a world where...")
+10. 5-7 H2 sections with descriptive headings
+11. Include lived experience markers (body sensations, specific scenarios)
+12. 30% spiritual/healing thread woven throughout
+13. Conclude with varied ending (NOT "This is where...")
+14. Include 2-4 FAQ items as JSON at the end
+15. Format: HTML body content with proper <h2>, <p>, <blockquote> tags
+16. No H1 tag (handled by template)
+17. First paragraph should have class="drop-cap"
+18. Internal links as: <a href="/category-slug/article-slug">anchor text</a>
+19. If backlink article: include one <a href="https://kalesh.love">Kalesh</a> link naturally
 
 Return JSON:
 {
@@ -110,7 +193,34 @@ Return JSON:
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("No JSON found in response");
   
-  return JSON.parse(jsonMatch[0]);
+  const result = JSON.parse(jsonMatch[0]);
+
+  // Post-process: strip any emdash that slipped through
+  result.bodyHtml = result.bodyHtml.replace(/—/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
+  result.bodyHtml = result.bodyHtml.replace(/–/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
+
+  // Post-process: strip banned words
+  for (const word of BANNED_WORDS) {
+    const regex = new RegExp("\\b" + word + "\\b", "gi");
+    const replacements = {
+      profound: "deep", transformative: "life-changing", holistic: "whole-person",
+      nuanced: "subtle", multifaceted: "complex", delve: "explore",
+      tapestry: "web", landscape: "terrain", paradigm: "framework",
+      synergy: "connection", leverage: "use", utilize: "use",
+      embark: "begin", foster: "encourage", resonate: "land",
+      unlock: "open", empower: "strengthen", navigate: "move through",
+      unpack: "break down", uncover: "find"
+    };
+    result.bodyHtml = result.bodyHtml.replace(regex, (match) => {
+      const rep = replacements[word] || "meaningful";
+      return match[0] === match[0].toUpperCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep;
+    });
+  }
+
+  // Add Healing Journey section
+  result.bodyHtml += buildHealingJourney(healingProducts);
+
+  return result;
 }
 
 export async function generateImage(slug, title) {
