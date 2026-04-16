@@ -165,7 +165,10 @@ Structure:
 - Honest limitations
 - Healing Journey section at end with 3-4 related Amazon products
 
-Include the main product link 2-3 times naturally with (paid link) after each.
+MINIMUM 3 Amazon product links in the body text (CRITICAL - hard requirement):
+- Include the main product link 3 times naturally woven into different paragraphs with (paid link) after each.
+- Also include 1-2 links to complementary products from the database.
+- Every Amazon link MUST have tag=${TAG}.
 Include Amazon Associate disclosure at the bottom.
 Format: HTML with <h2>, <p>, <blockquote>, <a> tags. First paragraph class="drop-cap".
 
@@ -224,6 +227,25 @@ Return JSON:
       const rep = replacements[word] || "meaningful";
       return match[0] === match[0].toUpperCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep;
     });
+  }
+
+  // Post-process: verify minimum 3 inline Amazon links
+  const inlineAmazonCount = (result.bodyHtml.match(/amazon\.com.*?tag=spankyspinola-20/g) || []).length;
+  if (inlineAmazonCount < 3) {
+    const needed = 3 - inlineAmazonCount;
+    const complementary = PRODUCT_DATABASE.filter(p => p.asin !== product.asin);
+    const extras = pickRandom(complementary, needed + 1);
+    const leadIns = [
+      "For many who walk this path, ",
+      "In practical terms, ",
+      "One thing worth considering here... ",
+    ];
+    for (let i = 0; i < needed && i < extras.length; i++) {
+      const p = extras[i];
+      const lead = leadIns[i % leadIns.length];
+      const url = `https://www.amazon.com/dp/${p.asin}?tag=${TAG}`;
+      result.bodyHtml += `\n<p>${lead}<a href="${url}" target="_blank" rel="nofollow noopener">${p.name}</a> (paid link) pairs well with this for sensitive people.</p>\n`;
+    }
   }
 
   return result;

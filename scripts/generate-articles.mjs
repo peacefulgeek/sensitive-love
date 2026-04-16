@@ -107,7 +107,7 @@ export async function generateArticle(topic, category) {
   const ref = NAMED_REFS[Math.floor(Math.random() * NAMED_REFS.length)];
   const phrases = pickRandom(KALESH_PHRASES, 4);
   const interjections = pickRandom(INTERJECTIONS, 2);
-  const inlineProducts = pickRandom(AFFILIATE_PRODUCTS, 3);
+  const inlineProducts = pickRandom(AFFILIATE_PRODUCTS, 4);
   const healingProducts = pickRandom(AFFILIATE_PRODUCTS, 4);
 
   const inlineProductInstructions = inlineProducts.map(p =>
@@ -144,8 +144,9 @@ Author voice: Kalesh — Consciousness Teacher & Writer (kalesh.love)
 
 7. CONVERSATIONAL TONE: Write like a real person having a deep conversation, not like a textbook. Use contractions sometimes. Include personal observations. Make the reader feel seen.
 
-8. Include these 2-3 Amazon product links naturally in the body:
+8. MINIMUM 3 Amazon product links in the body text (CRITICAL - this is a hard requirement):
 ${inlineProductInstructions}
+You MUST include ALL of these product links naturally woven into the article paragraphs. Each link MUST appear in the body text, not just in a list at the end. Weave them into relevant paragraphs where the product naturally supports the point being made.
 
 9. Varied opener (NOT "In a world where...")
 10. 5-7 H2 sections with descriptive headings
@@ -215,6 +216,27 @@ Return JSON:
       const rep = replacements[word] || "meaningful";
       return match[0] === match[0].toUpperCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep;
     });
+  }
+
+  // Post-process: verify minimum 3 inline Amazon links
+  const inlineAmazonCount = (result.bodyHtml.match(/amazon\.com.*?tag=spankyspinola-20/g) || []).length;
+  if (inlineAmazonCount < 3) {
+    // Force-inject missing products
+    const needed = 3 - inlineAmazonCount;
+    const extraProducts = pickRandom(AFFILIATE_PRODUCTS, needed + 2);
+    const leadIns = [
+      "For many who walk this path, ",
+      "In practical terms, ",
+      "One thing worth considering here... ",
+      "On the practical side, ",
+      "A small but meaningful support... ",
+    ];
+    for (let i = 0; i < needed && i < extraProducts.length; i++) {
+      const p = extraProducts[i];
+      const lead = leadIns[i % leadIns.length];
+      const link = `<a href="https://www.amazon.com/dp/${p.asin}?tag=${AFFILIATE_TAG}" target="_blank" rel="nofollow noopener">${p.name}</a>`;
+      result.bodyHtml += `\n<p>${lead}${link} (paid link) - ${p.desc}.</p>\n`;
+    }
   }
 
   // Add Healing Journey section
