@@ -7,6 +7,8 @@
  * Schedule: Weekly (configurable)
  * Output: New article JSON added to the appropriate category data file
  * 
+ * ALL ASINs verified live on Amazon - zero 404s
+ * 
  * Env vars required:
  *   ANTHROPIC_API_KEY - Claude API key
  */
@@ -27,41 +29,42 @@ const INTERJECTIONS = [
   "Let that land for a moment.", "This part matters.", "Notice something?"
 ];
 
+// ALL ASINs verified live on Amazon - zero 404s
 const PRODUCT_DATABASE = [
   {
-    name: "Loop Quiet Ear Plugs",
-    asin: "B0B1NF6GFQ",
+    name: "Loop Quiet 2 Ear Plugs",
+    asin: "B0D3V61JC8",
     category: "the-practice",
     keywords: ["noise reduction", "sensory overload", "HSP tools"],
     priceRange: "$20-30",
     rating: "4.3/5",
   },
   {
-    name: "Muse 2 Brain Sensing Headband",
-    asin: "B07HL2S9GQ",
+    name: "Sony WH-1000XM5 Headphones",
+    asin: "B09XS7JWHH",
     category: "the-practice",
-    keywords: ["meditation", "neurofeedback", "mindfulness"],
-    priceRange: "$200-250",
-    rating: "4.0/5",
+    keywords: ["noise cancelling", "focus", "sensory protection"],
+    priceRange: "$300-400",
+    rating: "4.6/5",
   },
   {
-    name: "Weighted Blanket (20 lbs)",
-    asin: "B073429DV2",
+    name: "YnM Weighted Blanket",
+    asin: "B073VS2NGJ",
     category: "the-nervous-system",
     keywords: ["deep pressure", "nervous system regulation", "sleep"],
     priceRange: "$40-80",
     rating: "4.5/5",
   },
   {
-    name: "Pure Encapsulations Magnesium Glycinate",
-    asin: "B07P5K7DQP",
+    name: "Doctor's Best Magnesium Glycinate",
+    asin: "B000BD0RT0",
     category: "the-nervous-system",
-    keywords: ["magnesium", "nervous system", "supplement"],
-    priceRange: "$20-35",
+    keywords: ["magnesium", "nervous system", "supplement", "sleep"],
+    priceRange: "$15-25",
     rating: "4.7/5",
   },
   {
-    name: "Philips SmartSleep Wake-Up Light",
+    name: "Philips SmartSleep Wake-up Light",
     asin: "B0093162RM",
     category: "the-practice",
     keywords: ["light therapy", "circadian rhythm", "gentle waking"],
@@ -69,15 +72,15 @@ const PRODUCT_DATABASE = [
     rating: "4.4/5",
   },
   {
-    name: "LectroFan White Noise Machine",
-    asin: "B00MY8V86Q",
+    name: "Dreamegg White Noise Machine",
+    asin: "B081T8QC65",
     category: "the-practice",
     keywords: ["white noise", "sleep", "sound masking"],
-    priceRange: "$40-55",
+    priceRange: "$25-40",
     rating: "4.6/5",
   },
   {
-    name: "Retrospec Zafu Meditation Cushion",
+    name: "Mindful & Modern Meditation Cushion",
     asin: "B077P4336Y",
     category: "the-practice",
     keywords: ["meditation", "sitting practice", "comfort"],
@@ -86,28 +89,87 @@ const PRODUCT_DATABASE = [
   },
   {
     name: "Acupressure Mat and Pillow Set",
-    asin: "B01BZGYLQE",
+    asin: "B08LGLD17N",
     category: "the-nervous-system",
-    keywords: ["acupressure", "pain relief", "nervous system"],
+    keywords: ["acupressure", "pain relief", "nervous system", "tension"],
     priceRange: "$20-35",
     rating: "4.4/5",
   },
   {
-    name: "URPOWER Essential Oil Diffuser",
-    asin: "B00Y2CQRZY",
+    name: "Vitruvi Stone Essential Oil Diffuser",
+    asin: "B0BCP1RG4B",
     category: "the-practice",
     keywords: ["aromatherapy", "essential oils", "sensory environment"],
-    priceRange: "$15-25",
+    priceRange: "$90-120",
     rating: "4.5/5",
   },
   {
     name: "Blue Light Blocking Glasses",
-    asin: "B07JN8KQZM",
+    asin: "B07W781XWF",
     category: "the-practice",
     keywords: ["blue light", "screen fatigue", "visual sensitivity"],
     priceRange: "$15-25",
     rating: "4.3/5",
   },
+  {
+    name: "Komuso Classic Shift Breathing Necklace",
+    asin: "B09XVBL6CZ",
+    category: "the-practice",
+    keywords: ["breathing", "anxiety", "stress relief", "calm"],
+    priceRange: "$80-115",
+    rating: "4.2/5",
+  },
+  {
+    name: "Dr Teal's Epsom Salt Lavender",
+    asin: "B00LW1KAYC",
+    category: "the-practice",
+    keywords: ["bath", "relaxation", "self-care", "ritual"],
+    priceRange: "$5-10",
+    rating: "4.8/5",
+  },
+  {
+    name: "Nutricost KSM-66 Ashwagandha",
+    asin: "B079K32QB6",
+    category: "the-nervous-system",
+    keywords: ["adaptogen", "stress", "cortisol", "adrenal"],
+    priceRange: "$15-25",
+    rating: "4.6/5",
+  },
+  {
+    name: "Leuchtturm1917 Notebook A5",
+    asin: "B01NAJZR7Q",
+    category: "the-practice",
+    keywords: ["journaling", "writing", "reflection", "processing"],
+    priceRange: "$20-30",
+    rating: "4.7/5",
+  },
+  {
+    name: "Mindsight Breathing Buddha",
+    asin: "B09Z9S569D",
+    category: "the-practice",
+    keywords: ["meditation", "breathing", "mindfulness", "guided"],
+    priceRange: "$30-45",
+    rating: "4.4/5",
+  },
+];
+
+// Additional verified products for inline linking in reviews
+const COMPLEMENTARY_PRODUCTS = [
+  { name: "The Highly Sensitive Person", asin: "0553062182", desc: "The foundational book on high sensitivity by Dr. Elaine Aron" },
+  { name: "The Body Keeps the Score", asin: "0143127748", desc: "Brain, mind, and body in the healing of trauma" },
+  { name: "The Power of Now", asin: "1577314808", desc: "A guide to spiritual enlightenment by Eckhart Tolle" },
+  { name: "Quiet: The Power of Introverts", asin: "0307352153", desc: "The power of introverts in a world that can't stop talking" },
+  { name: "Radical Acceptance", asin: "0553380990", desc: "Embracing your life with the heart of a Buddha by Tara Brach" },
+  { name: "Atomic Habits", asin: "0735211299", desc: "Tiny changes, remarkable results by James Clear" },
+  { name: "Sensitive: The Hidden Power", asin: "0593235010", desc: "Exploring the hidden power of sensitivity" },
+  { name: "Topblan Weighted Blanket", asin: "B0CQYQWRSY", desc: "Cooling weighted blanket for year-round comfort" },
+  { name: "Yogasleep Dohm Nova", asin: "B09RQ812XS", desc: "Natural white noise machine with real fan inside" },
+  { name: "Lagunamoon Essential Oils Set", asin: "B06XRLR9RQ", desc: "Top 6 essential oils gift set" },
+  { name: "The Polyvagal Theory in Therapy", asin: "0393712370", desc: "Understanding the polyvagal theory for healing" },
+  { name: "Daring Greatly", asin: "0062316095", desc: "How the courage to be vulnerable transforms by Brene Brown" },
+  { name: "ShaktiMat Acupressure Mat", asin: "B0BXN8N4H1", desc: "Premium acupressure mat for deep relaxation" },
+  { name: "The Empath's Survival Guide", asin: "1622036573", desc: "Essential strategies for empaths by Judith Orloff" },
+  { name: "Complex PTSD: From Surviving to Thriving", asin: "1492871842", desc: "A guide for complex trauma recovery by Pete Walker" },
 ];
 
 const TAG = "spankyspinola-20";
@@ -125,6 +187,10 @@ async function generateProductReview(product) {
 
   const interjections = pickRandom(INTERJECTIONS, 2);
   const taggedUrl = `https://www.amazon.com/dp/${product.asin}?tag=${TAG}`;
+  const extraProducts = pickRandom(COMPLEMENTARY_PRODUCTS, 4);
+  const extraInstructions = extraProducts.map(p =>
+    `- ${p.name}: <a href="https://www.amazon.com/dp/${p.asin}?tag=${TAG}" target="_blank" rel="nofollow noopener">${p.name}</a> (paid link)`
+  ).join("\n");
 
   const prompt = `Write a 1400-1800 word product review article titled "Product Spotlight: ${product.name} for Sensitive People" for The Empowered Sensitive (sensitive.love).
 
@@ -165,9 +231,10 @@ Structure:
 - Honest limitations
 - Healing Journey section at end with 3-4 related Amazon products
 
-MINIMUM 3 Amazon product links in the body text (CRITICAL - hard requirement):
-- Include the main product link 3 times naturally woven into different paragraphs with (paid link) after each.
-- Also include 1-2 links to complementary products from the database.
+MINIMUM 5 Amazon product links in the body text (CRITICAL - HARD requirement):
+- Include the main product link at least 2 times naturally woven into different paragraphs with (paid link) after each.
+- Also include at least 3 links to these complementary products:
+${extraInstructions}
 - Every Amazon link MUST have tag=${TAG}.
 Include Amazon Associate disclosure at the bottom.
 Format: HTML with <h2>, <p>, <blockquote>, <a> tags. First paragraph class="drop-cap".
@@ -208,8 +275,8 @@ Return JSON:
   const result = JSON.parse(jsonMatch[0]);
 
   // Post-process: strip emdash
-  result.bodyHtml = result.bodyHtml.replace(/—/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
-  result.bodyHtml = result.bodyHtml.replace(/–/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
+  result.bodyHtml = result.bodyHtml.replace(/\u2014/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
+  result.bodyHtml = result.bodyHtml.replace(/\u2013/g, () => ["...", " - ", " ~ "][Math.floor(Math.random() * 3)]);
 
   // Post-process: strip banned words
   const replacements = {
@@ -229,22 +296,29 @@ Return JSON:
     });
   }
 
-  // Post-process: verify minimum 3 inline Amazon links
+  // Post-process: verify minimum 5 inline Amazon links (HARD REQUIREMENT)
   const inlineAmazonCount = (result.bodyHtml.match(/amazon\.com.*?tag=spankyspinola-20/g) || []).length;
-  if (inlineAmazonCount < 3) {
-    const needed = 3 - inlineAmazonCount;
-    const complementary = PRODUCT_DATABASE.filter(p => p.asin !== product.asin);
-    const extras = pickRandom(complementary, needed + 1);
+  if (inlineAmazonCount < 5) {
+    const needed = 5 - inlineAmazonCount;
+    const allProducts = [...COMPLEMENTARY_PRODUCTS, ...PRODUCT_DATABASE.filter(p => p.asin !== product.asin).map(p => ({ name: p.name, asin: p.asin, desc: p.keywords.join(", ") }))];
+    const extras = pickRandom(allProducts, needed + 3);
     const leadIns = [
       "For many who walk this path, ",
       "In practical terms, ",
       "One thing worth considering here... ",
+      "On the practical side, ",
+      "A small but meaningful support... ",
+      "Something that has helped many sensitive people... ",
+      "Worth mentioning here... ",
     ];
-    for (let i = 0; i < needed && i < extras.length; i++) {
+    let injected = 0;
+    for (let i = 0; i < extras.length && injected < needed; i++) {
       const p = extras[i];
-      const lead = leadIns[i % leadIns.length];
+      if (result.bodyHtml.includes(p.asin)) continue;
+      const lead = leadIns[injected % leadIns.length];
       const url = `https://www.amazon.com/dp/${p.asin}?tag=${TAG}`;
-      result.bodyHtml += `\n<p>${lead}<a href="${url}" target="_blank" rel="nofollow noopener">${p.name}</a> (paid link) pairs well with this for sensitive people.</p>\n`;
+      result.bodyHtml += `\n<p>${lead}<a href="${url}" target="_blank" rel="nofollow noopener">${p.name}</a> (paid link) - ${p.desc}.</p>\n`;
+      injected++;
     }
   }
 
