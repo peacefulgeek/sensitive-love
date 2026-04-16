@@ -341,5 +341,92 @@ function generateProductSpotlight(product) {
   };
 }
 
+// Main runner for cron
+async function runProductSpotlight() {
+  console.log('[product-spotlight] Starting...');
+  if (!PRODUCT_SPOTLIGHT_ENABLED) {
+    console.log('[product-spotlight] Disabled. Exiting.');
+    return;
+  }
+
+  // Pick a random product that hasn't been spotlighted yet
+  const product = PRODUCT_DATABASE[Math.floor(Math.random() * PRODUCT_DATABASE.length)];
+  console.log(`[product-spotlight] Generating review for: ${product.name}`);
+
+  try {
+    const review = await generateProductReview(product);
+    if (!review) {
+      console.log('[product-spotlight] No review generated.');
+      return;
+    }
+
+    const spotlight = generateProductSpotlight(product);
+    const now = new Date();
+
+    // Build article entry
+    const entry = {
+      id: Date.now(),
+      title: spotlight.title,
+      slug: spotlight.slug,
+      category: spotlight.category,
+      categoryName: spotlight.category.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      excerpt: review.excerpt,
+      metaDescription: review.metaDescription,
+      dateISO: now.toISOString(),
+      dateHuman: now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      readingTime: Math.ceil(review.bodyHtml.split(/\s+/).length / 250),
+      heroImage: `https://sensitive-love.b-cdn.net/images/default-hero.webp`,
+      ogImage: `https://sensitive-love.b-cdn.net/og/default-og.webp`,
+      namedRef: 'Elaine Aron',
+      openerType: 'varied',
+      bodyHtml: review.bodyHtml,
+      toc: review.toc || [],
+      faqs: review.faqs || [],
+      internalLinks: [],
+      namedRefObj: { name: 'Elaine Aron', topic: 'sensory processing sensitivity' },
+      conclusionType: 'varied',
+      backlinkType: 'product',
+      actualWordCount: review.bodyHtml.split(/\s+/).length,
+    };
+
+    // Write to data files
+    const { readFileSync, writeFileSync } = await import('fs');
+    const { resolve, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const __dir = dirname(fileURLToPath(import.meta.url));
+    const projectRoot = resolve(__dir, '..');
+
+    // Update index
+    const indexPath = resolve(projectRoot, 'client/src/data/articles-index.json');
+    const index = JSON.parse(readFileSync(indexPath, 'utf-8'));
+    const { bodyHtml: _b, toc: _t, faqs: _f, ...indexEntry } = entry;
+    index.push(indexEntry);
+    writeFileSync(indexPath, JSON.stringify(index));
+
+    // Update category file
+    const catPath = resolve(projectRoot, `client/src/data/articles-${spotlight.category}.json`);
+    const catArticles = JSON.parse(readFileSync(catPath, 'utf-8'));
+    catArticles.push(entry);
+    writeFileSync(catPath, JSON.stringify(catArticles));
+
+    console.log(`[product-spotlight] Generated: ${spotlight.slug}`);
+
+    // Git push if PAT available
+    if (process.env.GH_PAT) {
+      const { execSync } = await import('child_process');
+      try {
+        execSync('git add -A', { cwd: projectRoot });
+        execSync(`git commit -m "product-spotlight: ${spotlight.slug}"`, { cwd: projectRoot });
+        execSync('git push origin main', { cwd: projectRoot });
+        console.log('[product-spotlight] Pushed to GitHub.');
+      } catch (e) {
+        console.error('[product-spotlight] Git push failed:', e.message);
+      }
+    }
+  } catch (err) {
+    console.error('[product-spotlight] Error:', err);
+  }
+}
+
 // Export for use by cron worker
-export { PRODUCT_DATABASE, PRODUCT_SPOTLIGHT_ENABLED, generateProductSpotlight, generateProductReview, TAG };
+export { PRODUCT_DATABASE, PRODUCT_SPOTLIGHT_ENABLED, generateProductSpotlight, generateProductReview, runProductSpotlight, TAG };

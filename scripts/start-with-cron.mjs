@@ -1,12 +1,13 @@
 /**
  * Start With Cron — Render Start Command
- * Spawns the web server and the cron worker together
+ * Spawns the web server and all cron workers together
  * 
  * Usage: NODE_ENV=production node scripts/start-with-cron.mjs
  * 
- * Cron schedule: Mon-Fri at 12:00 UTC
- * After the initial 270 gated articles are exhausted (~54 days),
- * the cron generates 5 new articles per week (1 per weekday)
+ * Cron schedules:
+ * - Article generation: Mon-Fri at 12:00 UTC (5/week)
+ * - Product spotlight: Wednesdays at 14:00 UTC (1/week)
+ * - Product refresh: Sundays at 06:00 UTC (1/week) — checks all ASINs for dead links
  */
 
 import { spawn } from "node:child_process";
@@ -28,46 +29,73 @@ server.on("error", (err) => {
   process.exit(1);
 });
 
-// Schedule cron: Mon-Fri at 12:00 UTC
-function scheduleCron() {
-  const now = new Date();
-  const utcHour = now.getUTCHours();
-  const utcMinute = now.getUTCMinutes();
-  const utcDay = now.getUTCDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+// Generic cron scheduler
+function scheduleWeekly({ name, targetDays, targetHourUTC, importPath, runFn }) {
+  function schedule() {
+    const now = new Date();
+    let targetDate = new Date(now);
+    targetDate.setUTCHours(targetHourUTC, 0, 0, 0);
 
-  // Calculate ms until next Mon-Fri 12:00 UTC
-  let targetDate = new Date(now);
-  targetDate.setUTCHours(12, 0, 0, 0);
-
-  // If it's already past 12:00 UTC today, or it's a weekend, find next weekday
-  if (utcHour >= 12 || utcDay === 0 || utcDay === 6) {
-    targetDate.setUTCDate(targetDate.getUTCDate() + 1);
-    // Skip to Monday if needed
-    while (targetDate.getUTCDay() === 0 || targetDate.getUTCDay() === 6) {
+    // If past target time today or not a target day, advance
+    if (now >= targetDate || !targetDays.includes(targetDate.getUTCDay())) {
       targetDate.setUTCDate(targetDate.getUTCDate() + 1);
+      while (!targetDays.includes(targetDate.getUTCDay())) {
+        targetDate.setUTCDate(targetDate.getUTCDate() + 1);
+      }
+      targetDate.setUTCHours(targetHourUTC, 0, 0, 0);
     }
+
+    const msUntilNext = targetDate.getTime() - now.getTime();
+    const hoursUntil = (msUntilNext / 3600000).toFixed(1);
+
+    console.log(`[${name}] Next run: ${targetDate.toISOString()} (in ${hoursUntil}h)`);
+
+    setTimeout(async () => {
+      console.log(`[${name}] Triggering...`);
+      try {
+        const mod = await import(importPath);
+        if (runFn && mod[runFn]) {
+          await mod[runFn]();
+        }
+      } catch (err) {
+        console.error(`[${name}] Job failed:`, err);
+      }
+      // Schedule next run
+      schedule();
+    }, msUntilNext);
   }
-
-  const msUntilNext = targetDate.getTime() - now.getTime();
-  const hoursUntil = (msUntilNext / 3600000).toFixed(1);
-
-  console.log(`[cron] Next run: ${targetDate.toISOString()} (in ${hoursUntil}h)`);
-
-  setTimeout(async () => {
-    console.log("[cron] Triggering cron job...");
-    try {
-      const { runCronJob } = await import("./cron-worker.mjs");
-      await runCronJob();
-    } catch (err) {
-      console.error("[cron] Job failed:", err);
-    }
-    // Schedule next run
-    scheduleCron();
-  }, msUntilNext);
+  schedule();
 }
 
-console.log("[startup] Scheduling cron worker (Mon-Fri 12:00 UTC)...");
-scheduleCron();
+// 1. Article generation: Mon-Fri at 12:00 UTC
+console.log("[startup] Scheduling article generation (Mon-Fri 12:00 UTC)...");
+scheduleWeekly({
+  name: "article-gen",
+  targetDays: [1, 2, 3, 4, 5], // Mon-Fri
+  targetHourUTC: 12,
+  importPath: "./cron-worker.mjs",
+  runFn: "runCronJob",
+});
+
+// 2. Product spotlight: Wednesdays at 14:00 UTC
+console.log("[startup] Scheduling product spotlight (Wed 14:00 UTC)...");
+scheduleWeekly({
+  name: "product-spotlight",
+  targetDays: [3], // Wednesday
+  targetHourUTC: 14,
+  importPath: "./product-spotlight.mjs",
+  runFn: "runProductSpotlight",
+});
+
+// 3. Product refresh: Sundays at 06:00 UTC
+console.log("[startup] Scheduling product refresh (Sun 06:00 UTC)...");
+scheduleWeekly({
+  name: "product-refresh",
+  targetDays: [0], // Sunday
+  targetHourUTC: 6,
+  importPath: "./product-refresh.mjs",
+  runFn: "runProductRefresh",
+});
 
 // Handle graceful shutdown
 process.on("SIGTERM", () => {
