@@ -2,20 +2,23 @@
 /**
  * Product Refresh Cron — sensitive.love
  * 
- * Checks all Amazon product links for:
- * - Dead links (404s) → replaces with working alternatives
- * - Title changes → updates product names in catalog
- * - Price changes → logs for review
- * - Availability → flags out-of-stock items
+ * Full product health check that scrapes Amazon for:
+ * 1. Dead links (404) → auto-replaces with same-category alternative
+ * 2. Title changes → updates anchor text in all articles + logs the change
+ * 3. Price extraction → logs current price for monitoring
+ * 4. Availability/stock → flags out-of-stock or unavailable items
+ * 5. Redirect detection → catches ASINs that redirect to different products
  * 
- * Runs weekly via cron-worker.mjs
- * Stores refresh log to Bunny CDN for monitoring
+ * Runs every Sunday at 06:00 UTC via start-with-cron.mjs
+ * Stores detailed refresh log to Bunny CDN at /logs/product-refresh-YYYY-MM-DD.json
+ * Also stores a rolling summary at /logs/product-refresh-latest.json
  */
 
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
+import http from 'http';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TAG = 'spankyspinola-20';
@@ -25,7 +28,7 @@ const BUNNY_STORAGE_KEY = '1114836c-66ba-4092-9d7120bf020d-9cb5-4d64';
 const BUNNY_STORAGE_HOST = 'ny.storage.bunnycdn.com';
 const BUNNY_STORAGE_ZONE = 'sensitive-love';
 
-// All 70 verified ASINs with metadata
+// All 69 verified ASINs with metadata
 const VERIFIED_PRODUCTS = {
   "0553062182": { name: "The Highly Sensitive Person", category: "books" },
   "0008244308": { name: "The Highly Sensitive Person (newer)", category: "books" },
@@ -99,58 +102,289 @@ const VERIFIED_PRODUCTS = {
   "B0B5GKRJNQ": { name: "Ostrichpillow Eye Pillow", category: "sleep" },
 };
 
-// Replacement map: if an ASIN dies, replace with another in same category
+// ─── Helpers ───
+
 function getReplacementAsin(deadAsin) {
   const deadProduct = VERIFIED_PRODUCTS[deadAsin];
   if (!deadProduct) return null;
-  
   const sameCat = Object.entries(VERIFIED_PRODUCTS)
     .filter(([asin, p]) => p.category === deadProduct.category && asin !== deadAsin);
-  
   if (sameCat.length === 0) return null;
   return sameCat[Math.floor(Math.random() * sameCat.length)][0];
 }
 
-// Check a single ASIN on Amazon
-function checkAsin(asin) {
-  return new Promise((resolve) => {
-    const url = `https://www.amazon.com/dp/${asin}`;
+/**
+ * Full GET request to Amazon product page.
+ * Extracts: HTTP status, title, price, availability, stock status.
+ */
+function scrapeAsin(asin) {
+  return new Promise((resolvePromise) => {
     const options = {
       hostname: 'www.amazon.com',
       path: `/dp/${asin}`,
-      method: 'HEAD',
+      method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Accept': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'identity',
+        'Cache-Control': 'no-cache',
       },
-      timeout: 10000,
+      timeout: 15000,
     };
-    
+
     const req = https.request(options, (res) => {
-      resolve({
-        asin,
-        status: res.statusCode,
-        alive: res.statusCode !== 404,
-        redirected: res.statusCode >= 300 && res.statusCode < 400,
+      let body = '';
+      res.setEncoding('utf-8');
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        const result = {
+          asin,
+          httpStatus: res.statusCode,
+          alive: res.statusCode !== 404,
+          title: null,
+          price: null,
+          availability: null,
+          inStock: true,
+          titleChanged: false,
+          priceRange: null,
+          rating: null,
+          reviewCount: null,
+        };
+
+        if (res.statusCode === 404) {
+          result.alive = false;
+          result.inStock = false;
+          resolvePromise(result);
+          return;
+        }
+
+        // ─── Extract title ───
+        // Try <title> tag first
+        const titleMatch = body.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch) {
+          let rawTitle = titleMatch[1].trim();
+          // Amazon titles often end with ": Amazon.com: ..." or " - Amazon.com"
+          rawTitle = rawTitle.replace(/\s*[-:|]\s*Amazon\.com.*$/i, '').trim();
+          rawTitle = rawTitle.replace(/\s*:\s*Amazon\.com.*$/i, '').trim();
+          if (rawTitle.length > 5 && rawTitle.length < 300) {
+            result.title = rawTitle;
+          }
+        }
+
+        // Fallback: productTitle span
+        if (!result.title) {
+          const prodTitle = body.match(/id="productTitle"[^>]*>([^<]+)</i);
+          if (prodTitle) {
+            result.title = prodTitle[1].trim();
+          }
+        }
+
+        // ─── Extract price ───
+        // Try multiple price selectors
+        const pricePatterns = [
+          /class="a-price-whole"[^>]*>(\d+)<.*?class="a-price-fraction"[^>]*>(\d+)</s,
+          /id="priceblock_ourprice"[^>]*>\$?([\d,.]+)/i,
+          /id="priceblock_dealprice"[^>]*>\$?([\d,.]+)/i,
+          /class="a-price"[^>]*>.*?<span[^>]*>\$?([\d,.]+)/s,
+          /"price":\s*"?\$?([\d,.]+)/,
+          /\$(\d{1,4}\.\d{2})/,
+        ];
+
+        for (const pattern of pricePatterns) {
+          const priceMatch = body.match(pattern);
+          if (priceMatch) {
+            if (priceMatch[2]) {
+              result.price = `$${priceMatch[1]}.${priceMatch[2]}`;
+            } else {
+              result.price = `$${priceMatch[1]}`;
+            }
+            break;
+          }
+        }
+
+        // ─── Extract availability / stock ───
+        const availPatterns = [
+          /id="availability"[^>]*>[\s\S]*?<span[^>]*>([^<]+)/i,
+          /id="outOfStock"[^>]*>/i,
+          /"availability"\s*:\s*"([^"]+)"/i,
+        ];
+
+        const availMatch = body.match(availPatterns[0]);
+        if (availMatch) {
+          result.availability = availMatch[1].trim();
+          const lower = result.availability.toLowerCase();
+          if (lower.includes('currently unavailable') || lower.includes('out of stock')) {
+            result.inStock = false;
+          }
+        }
+
+        // Check for explicit out-of-stock
+        if (body.match(availPatterns[1])) {
+          result.inStock = false;
+          result.availability = result.availability || 'Out of Stock';
+        }
+
+        // Schema.org availability
+        const schemaAvail = body.match(availPatterns[2]);
+        if (schemaAvail) {
+          const val = schemaAvail[1].toLowerCase();
+          if (val.includes('outofstock') || val.includes('discontinued')) {
+            result.inStock = false;
+            result.availability = result.availability || 'Out of Stock';
+          }
+        }
+
+        // ─── Extract rating ───
+        const ratingMatch = body.match(/(\d\.\d)\s*out of\s*5\s*stars/i);
+        if (ratingMatch) {
+          result.rating = ratingMatch[1];
+        }
+
+        // ─── Extract review count ───
+        const reviewMatch = body.match(/([\d,]+)\s*(?:global\s*)?ratings/i);
+        if (reviewMatch) {
+          result.reviewCount = reviewMatch[1].replace(/,/g, '');
+        }
+
+        // ─── Check if title changed ───
+        const known = VERIFIED_PRODUCTS[asin];
+        if (known && result.title) {
+          // Normalize for comparison (lowercase, strip special chars)
+          const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const knownNorm = normalize(known.name);
+          const scrapedNorm = normalize(result.title);
+          // Title changed if the known name is NOT a substring of the scraped title
+          if (!scrapedNorm.includes(knownNorm) && !knownNorm.includes(scrapedNorm)) {
+            result.titleChanged = true;
+          }
+        }
+
+        resolvePromise(result);
       });
     });
-    
-    req.on('error', () => resolve({ asin, status: 0, alive: true, redirected: false }));
-    req.on('timeout', () => { req.destroy(); resolve({ asin, status: 0, alive: true, redirected: false }); });
+
+    req.on('error', () => {
+      resolvePromise({
+        asin,
+        httpStatus: 0,
+        alive: true, // assume alive on network error
+        title: null,
+        price: null,
+        availability: 'Network error',
+        inStock: true,
+        titleChanged: false,
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      resolvePromise({
+        asin,
+        httpStatus: 0,
+        alive: true,
+        title: null,
+        price: null,
+        availability: 'Timeout',
+        inStock: true,
+        titleChanged: false,
+      });
+    });
+
     req.end();
   });
 }
 
-// Upload refresh log to Bunny CDN
-function uploadLog(log) {
-  return new Promise((resolve, reject) => {
-    const date = new Date().toISOString().split('T')[0];
-    const logPath = `/logs/product-refresh-${date}.json`;
-    const body = JSON.stringify(log, null, 2);
-    
+// ─── Article data operations ───
+
+function replaceDeadAsinInArticles(deadAsin, replacementAsin) {
+  const dataDir = resolve(__dirname, '..', 'client', 'src', 'data');
+  const files = ['articles-the-gift.json', 'articles-the-nervous-system.json', 'articles-the-practice.json', 'articles-the-science.json', 'articles-the-world.json'];
+  let totalReplaced = 0;
+  const replacement = VERIFIED_PRODUCTS[replacementAsin];
+
+  for (const fname of files) {
+    const filePath = resolve(dataDir, fname);
+    try {
+      const articles = JSON.parse(readFileSync(filePath, 'utf-8'));
+      let modified = false;
+      for (const art of articles) {
+        if (art.bodyHtml && art.bodyHtml.includes(deadAsin)) {
+          art.bodyHtml = art.bodyHtml.split(`amazon.com/dp/${deadAsin}`).join(`amazon.com/dp/${replacementAsin}`);
+          if (replacement) {
+            const pattern = new RegExp(`(dp/${replacementAsin}[^"]*"[^>]*>)[^<]+`, 'g');
+            art.bodyHtml = art.bodyHtml.replace(pattern, `$1${replacement.name}`);
+          }
+          modified = true;
+          totalReplaced++;
+        }
+      }
+      if (modified) {
+        writeFileSync(filePath, JSON.stringify(articles));
+      }
+    } catch (e) {
+      console.error(`  Error processing ${fname}:`, e.message);
+    }
+  }
+  return totalReplaced;
+}
+
+function updateTitleInArticles(asin, oldName, newTitle) {
+  const dataDir = resolve(__dirname, '..', 'client', 'src', 'data');
+  const files = ['articles-the-gift.json', 'articles-the-nervous-system.json', 'articles-the-practice.json', 'articles-the-science.json', 'articles-the-world.json'];
+  let totalUpdated = 0;
+
+  // Use a shortened, clean version of the new title for anchor text
+  let cleanTitle = newTitle;
+  // Truncate very long Amazon titles to first meaningful segment
+  if (cleanTitle.length > 80) {
+    const parts = cleanTitle.split(/\s*[-,|]\s*/);
+    cleanTitle = parts[0];
+    if (cleanTitle.length < 20 && parts.length > 1) {
+      cleanTitle = parts.slice(0, 2).join(' - ');
+    }
+  }
+
+  for (const fname of files) {
+    const filePath = resolve(dataDir, fname);
+    try {
+      const articles = JSON.parse(readFileSync(filePath, 'utf-8'));
+      let modified = false;
+      for (const art of articles) {
+        if (art.bodyHtml && art.bodyHtml.includes(asin)) {
+          // Update anchor text: find links to this ASIN and update the text
+          const linkPattern = new RegExp(
+            `(<a[^>]*amazon\\.com/dp/${asin}[^>]*>)${escapeRegex(oldName)}(</a>)`,
+            'gi'
+          );
+          if (linkPattern.test(art.bodyHtml)) {
+            art.bodyHtml = art.bodyHtml.replace(linkPattern, `$1${cleanTitle}$2`);
+            modified = true;
+            totalUpdated++;
+          }
+        }
+      }
+      if (modified) {
+        writeFileSync(filePath, JSON.stringify(articles));
+      }
+    } catch (e) {
+      console.error(`  Error updating titles in ${fname}:`, e.message);
+    }
+  }
+  return totalUpdated;
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ─── Bunny CDN log upload ───
+
+function uploadToBunny(path, body) {
+  return new Promise((resolvePromise, reject) => {
     const options = {
       hostname: BUNNY_STORAGE_HOST,
-      path: `/${BUNNY_STORAGE_ZONE}${logPath}`,
+      path: `/${BUNNY_STORAGE_ZONE}${path}`,
       method: 'PUT',
       headers: {
         'AccessKey': BUNNY_STORAGE_KEY,
@@ -158,150 +392,204 @@ function uploadLog(log) {
         'Content-Length': Buffer.byteLength(body),
       },
     };
-    
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
-      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      res.on('end', () => resolvePromise({ status: res.statusCode, body: data }));
     });
-    
     req.on('error', reject);
     req.write(body);
     req.end();
   });
 }
 
-// Replace dead ASIN in article data files
-function replaceDeadAsinInArticles(deadAsin, replacementAsin) {
-  const dataDir = resolve(__dirname, '..', 'client', 'src', 'data');
-  const files = ['articles-the-gift.json', 'articles-the-nervous-system.json', 'articles-the-practice.json', 'articles-the-science.json', 'articles-the-world.json'];
-  
-  let totalReplaced = 0;
-  const replacement = VERIFIED_PRODUCTS[replacementAsin];
-  
-  for (const fname of files) {
-    const filePath = resolve(dataDir, fname);
-    try {
-      const articles = JSON.parse(readFileSync(filePath, 'utf-8'));
-      let modified = false;
-      
-      for (const art of articles) {
-        if (art.bodyHtml && art.bodyHtml.includes(deadAsin)) {
-          // Replace the ASIN in all Amazon links
-          const oldLink = `amazon.com/dp/${deadAsin}?tag=${TAG}`;
-          const newLink = `amazon.com/dp/${replacementAsin}?tag=${TAG}`;
-          art.bodyHtml = art.bodyHtml.split(oldLink).join(newLink);
-          
-          // Also update product name if it appears
-          if (replacement) {
-            // Update the anchor text for the new product
-            const oldPattern = new RegExp(`(dp/${deadAsin}[^"]*"[^>]*>)[^<]+`, 'g');
-            art.bodyHtml = art.bodyHtml.replace(oldPattern, `$1${replacement.name}`);
-          }
-          
-          modified = true;
-          totalReplaced++;
-        }
-      }
-      
-      if (modified) {
-        writeFileSync(filePath, JSON.stringify(articles, null, 0));
-      }
-    } catch (e) {
-      console.error(`Error processing ${fname}:`, e.message);
-    }
-  }
-  
-  return totalReplaced;
-}
+// ─── Main ───
 
 async function main() {
   console.log('=== Product Refresh Cron ===');
-  console.log(`Checking ${Object.keys(VERIFIED_PRODUCTS).length} ASINs...`);
-  
+  console.log(`Time: ${new Date().toISOString()}`);
+  console.log(`Checking ${Object.keys(VERIFIED_PRODUCTS).length} ASINs for title, price, availability, and link health...\n`);
+
   const results = {
     timestamp: new Date().toISOString(),
     total_checked: 0,
     alive: 0,
     dead: 0,
-    replaced: 0,
+    out_of_stock: 0,
+    title_changed: 0,
+    titles_updated_in_articles: 0,
+    dead_links_replaced: 0,
+    prices_found: 0,
     uncertain: 0,
-    details: [],
+    products: [],
+    actions_taken: [],
   };
-  
+
   const asins = Object.keys(VERIFIED_PRODUCTS);
-  
-  // Check in batches of 5 with 1s delay between batches
-  for (let i = 0; i < asins.length; i += 5) {
-    const batch = asins.slice(i, i + 5);
-    const checks = await Promise.all(batch.map(checkAsin));
-    
-    for (const check of checks) {
+
+  // Scrape in batches of 3 with 2s delay (gentler on Amazon)
+  for (let i = 0; i < asins.length; i += 3) {
+    const batch = asins.slice(i, i + 3);
+    const scraped = await Promise.all(batch.map(scrapeAsin));
+
+    for (const data of scraped) {
       results.total_checked++;
-      const product = VERIFIED_PRODUCTS[check.asin];
-      
-      if (check.status === 404) {
+      const known = VERIFIED_PRODUCTS[data.asin];
+
+      const productEntry = {
+        asin: data.asin,
+        known_name: known.name,
+        category: known.category,
+        http_status: data.httpStatus,
+        scraped_title: data.title,
+        price: data.price,
+        in_stock: data.inStock,
+        availability: data.availability,
+        rating: data.rating,
+        review_count: data.reviewCount,
+        title_changed: data.titleChanged,
+        status: 'alive',
+      };
+
+      // ─── Handle dead links (404) ───
+      if (!data.alive) {
+        productEntry.status = 'dead';
         results.dead++;
-        console.log(`  DEAD: ${check.asin} - ${product.name}`);
-        
-        // Auto-replace with same-category product
-        const replacement = getReplacementAsin(check.asin);
+        console.log(`  DEAD: ${data.asin} - ${known.name}`);
+
+        const replacement = getReplacementAsin(data.asin);
         if (replacement) {
-          const count = replaceDeadAsinInArticles(check.asin, replacement);
-          results.replaced += count;
-          console.log(`    Replaced with ${replacement} (${VERIFIED_PRODUCTS[replacement].name}) in ${count} articles`);
-          results.details.push({
-            asin: check.asin,
-            name: product.name,
-            status: 'dead',
+          const count = replaceDeadAsinInArticles(data.asin, replacement);
+          results.dead_links_replaced += count;
+          productEntry.replacement_asin = replacement;
+          productEntry.replacement_name = VERIFIED_PRODUCTS[replacement].name;
+          productEntry.articles_fixed = count;
+          results.actions_taken.push({
+            type: 'dead_link_replaced',
+            asin: data.asin,
+            product: known.name,
             replacement: replacement,
             articles_fixed: count,
           });
+          console.log(`    -> Replaced with ${replacement} (${VERIFIED_PRODUCTS[replacement].name}) in ${count} articles`);
         }
-      } else if (check.alive) {
-        results.alive++;
-        results.details.push({
-          asin: check.asin,
-          name: product.name,
-          status: 'alive',
-          http_code: check.status,
+
+      // ─── Handle out-of-stock ───
+      } else if (!data.inStock) {
+        productEntry.status = 'out_of_stock';
+        results.out_of_stock++;
+        console.log(`  OUT OF STOCK: ${data.asin} - ${known.name} (${data.availability})`);
+        results.actions_taken.push({
+          type: 'out_of_stock_flagged',
+          asin: data.asin,
+          product: known.name,
+          availability: data.availability,
         });
+
+      // ─── Handle title changes ───
       } else {
-        results.uncertain++;
-        results.details.push({
-          asin: check.asin,
-          name: product.name,
-          status: 'uncertain',
-          http_code: check.status,
-        });
+        productEntry.status = 'alive';
+        results.alive++;
+
+        if (data.titleChanged && data.title) {
+          results.title_changed++;
+          console.log(`  TITLE CHANGED: ${data.asin}`);
+          console.log(`    Old: ${known.name}`);
+          console.log(`    New: ${data.title}`);
+
+          const updated = updateTitleInArticles(data.asin, known.name, data.title);
+          results.titles_updated_in_articles += updated;
+          results.actions_taken.push({
+            type: 'title_updated',
+            asin: data.asin,
+            old_title: known.name,
+            new_title: data.title,
+            articles_updated: updated,
+          });
+          console.log(`    -> Updated anchor text in ${updated} articles`);
+        }
       }
+
+      // Track price extraction
+      if (data.price) {
+        results.prices_found++;
+      }
+
+      // Track uncertain (bot-blocked)
+      if (data.httpStatus === 503 || data.httpStatus === 500 || data.httpStatus === 0) {
+        if (data.alive) {
+          results.uncertain++;
+          productEntry.status = 'uncertain';
+        }
+      }
+
+      results.products.push(productEntry);
     }
-    
-    // Rate limit
-    await new Promise(r => setTimeout(r, 1000));
+
+    // Rate limit: 2 seconds between batches
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Progress log every 15 ASINs
+    if ((i + 3) % 15 === 0) {
+      console.log(`  ... checked ${Math.min(i + 3, asins.length)}/${asins.length}`);
+    }
   }
-  
-  console.log(`\n=== Results ===`);
-  console.log(`Alive: ${results.alive}`);
-  console.log(`Dead: ${results.dead}`);
-  console.log(`Replaced: ${results.replaced} article links`);
-  console.log(`Uncertain: ${results.uncertain}`);
-  
-  // Upload log to Bunny CDN
+
+  // ─── Summary ───
+  console.log('\n=== REFRESH SUMMARY ===');
+  console.log(`Total checked:    ${results.total_checked}`);
+  console.log(`Alive:            ${results.alive}`);
+  console.log(`Dead (replaced):  ${results.dead} (${results.dead_links_replaced} article links fixed)`);
+  console.log(`Out of stock:     ${results.out_of_stock}`);
+  console.log(`Title changed:    ${results.title_changed} (${results.titles_updated_in_articles} article anchors updated)`);
+  console.log(`Prices found:     ${results.prices_found}`);
+  console.log(`Uncertain (bot):  ${results.uncertain}`);
+  console.log(`Actions taken:    ${results.actions_taken.length}`);
+
+  // ─── Price summary table ───
+  const withPrices = results.products.filter(p => p.price);
+  if (withPrices.length > 0) {
+    console.log('\n--- Price Snapshot ---');
+    for (const p of withPrices) {
+      console.log(`  ${p.asin} | ${p.price.padEnd(10)} | ${p.known_name}`);
+    }
+  }
+
+  // ─── Upload logs to Bunny CDN ───
+  const date = new Date().toISOString().split('T')[0];
   try {
-    const logResult = await uploadLog(results);
-    console.log(`\nRefresh log uploaded to Bunny CDN (status: ${logResult.status})`);
+    // Dated log
+    const logBody = JSON.stringify(results, null, 2);
+    const dated = await uploadToBunny(`/logs/product-refresh-${date}.json`, logBody);
+    console.log(`\nDated log uploaded (status: ${dated.status})`);
+
+    // Rolling latest log
+    const latest = await uploadToBunny('/logs/product-refresh-latest.json', logBody);
+    console.log(`Latest log uploaded (status: ${latest.status})`);
+
+    // Price history append
+    const priceSnapshot = {
+      date,
+      prices: withPrices.map(p => ({ asin: p.asin, name: p.known_name, price: p.price })),
+    };
+    const priceBody = JSON.stringify(priceSnapshot) + '\n';
+    const priceLog = await uploadToBunny(`/logs/price-history-${date}.json`, JSON.stringify(priceSnapshot, null, 2));
+    console.log(`Price history uploaded (status: ${priceLog.status})`);
   } catch (e) {
-    console.error('Failed to upload log:', e.message);
+    console.error('Failed to upload logs:', e.message);
   }
-  
-  // If any articles were modified, commit and push
-  if (results.replaced > 0 && process.env.GH_PAT) {
-    console.log('\nDead links found and replaced. Push changes to GitHub...');
+
+  // ─── Git push if changes were made ───
+  const hasChanges = results.dead_links_replaced > 0 || results.titles_updated_in_articles > 0;
+  if (hasChanges && process.env.GH_PAT) {
+    console.log('\nChanges detected. Pushing to GitHub...');
     const { execSync } = await import('child_process');
     try {
       const projectDir = resolve(__dirname, '..');
-      execSync('git add -A && git commit -m "Auto-refresh: replace dead product links" && git push', {
+      const msg = [];
+      if (results.dead_links_replaced > 0) msg.push(`replaced ${results.dead} dead links`);
+      if (results.titles_updated_in_articles > 0) msg.push(`updated ${results.title_changed} titles`);
+      execSync(`git add -A && git commit -m "product-refresh: ${msg.join(', ')}" && git push`, {
         cwd: projectDir,
         stdio: 'inherit',
       });
@@ -309,8 +597,11 @@ async function main() {
     } catch (e) {
       console.error('Git push failed:', e.message);
     }
+  } else {
+    console.log('\nNo article changes needed this run.');
   }
-  
+
+  console.log(`\n=== Product Refresh Complete ===`);
   return results;
 }
 
