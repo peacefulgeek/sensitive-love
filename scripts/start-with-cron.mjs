@@ -1,111 +1,111 @@
 /**
  * Start With Cron — Render Start Command
- * Spawns the web server and all cron workers together
+ * Spawns the web server + all 5 cron schedules via node-cron
  * 
  * Usage: NODE_ENV=production node scripts/start-with-cron.mjs
  * 
- * Cron schedules:
- * - Article generation: Mon-Fri at 12:00 UTC (5/week)
- * - Product spotlight: Wednesdays at 14:00 UTC (1/week)
- * - Product refresh: Sundays at 06:00 UTC (1/week) — checks all ASINs for dead links
+ * Cron schedules (all UTC):
+ * 1. Article generation:    Mon-Fri 06:00 UTC  (5/week)
+ * 2. Product spotlight:     Saturdays 08:00 UTC (1/week)
+ * 3. Monthly refresh:       1st of month 03:00 UTC (10 articles)
+ * 4. Quarterly deep refresh: 1st of Jan,Apr,Jul,Oct 04:00 UTC (20 articles)
+ * 5. ASIN health check:     Sundays 05:00 UTC (verify all affiliate links)
  */
 
-import { spawn } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import cron from 'node-cron';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, "..");
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+
+const AUTO_GEN_ENABLED = process.env.AUTO_GEN_ENABLED === 'true';
 
 // Start the web server
-console.log("[startup] Starting web server...");
-const server = spawn("node", [path.join(PROJECT_ROOT, "dist/index.js")], {
-  stdio: "inherit",
-  env: { ...process.env, NODE_ENV: "production" },
+console.log('[startup] Starting web server...');
+const server = spawn('node', [path.join(PROJECT_ROOT, 'dist/index.js')], {
+  stdio: 'inherit',
+  env: { ...process.env, NODE_ENV: 'production' },
 });
 
-server.on("error", (err) => {
-  console.error("[startup] Server error:", err);
+server.on('error', (err) => {
+  console.error('[startup] Server error:', err);
   process.exit(1);
 });
 
-// Generic cron scheduler
-function scheduleWeekly({ name, targetDays, targetHourUTC, importPath, runFn }) {
-  function schedule() {
-    const now = new Date();
-    let targetDate = new Date(now);
-    targetDate.setUTCHours(targetHourUTC, 0, 0, 0);
-
-    // If past target time today or not a target day, advance
-    if (now >= targetDate || !targetDays.includes(targetDate.getUTCDay())) {
-      targetDate.setUTCDate(targetDate.getUTCDate() + 1);
-      while (!targetDays.includes(targetDate.getUTCDay())) {
-        targetDate.setUTCDate(targetDate.getUTCDate() + 1);
-      }
-      targetDate.setUTCHours(targetHourUTC, 0, 0, 0);
-    }
-
-    const msUntilNext = targetDate.getTime() - now.getTime();
-    const hoursUntil = (msUntilNext / 3600000).toFixed(1);
-
-    console.log(`[${name}] Next run: ${targetDate.toISOString()} (in ${hoursUntil}h)`);
-
-    setTimeout(async () => {
-      console.log(`[${name}] Triggering...`);
-      try {
-        const mod = await import(importPath);
-        if (runFn && mod[runFn]) {
-          await mod[runFn]();
-        }
-      } catch (err) {
-        console.error(`[${name}] Job failed:`, err);
-      }
-      // Schedule next run
-      schedule();
-    }, msUntilNext);
+// Cron 1: Article generation — Mon-Fri 06:00 UTC
+cron.schedule('0 6 * * 1-5', async () => {
+  if (!AUTO_GEN_ENABLED) {
+    console.log('[cron] article-gen skipped (AUTO_GEN_ENABLED=false)');
+    return;
   }
-  schedule();
-}
+  try {
+    console.log('[cron] article-gen starting...');
+    const { runCronJob } = await import('./cron-worker.mjs');
+    await runCronJob();
+    console.log('[cron] article-gen completed');
+  } catch (e) { console.error('[cron] article-gen failed:', e); }
+}, { timezone: 'UTC' });
+console.log('[startup] Cron 1 registered: article-gen (Mon-Fri 06:00 UTC)');
 
-// 1. Article generation: Mon-Fri at 12:00 UTC
-console.log("[startup] Scheduling article generation (Mon-Fri 12:00 UTC)...");
-scheduleWeekly({
-  name: "article-gen",
-  targetDays: [1, 2, 3, 4, 5], // Mon-Fri
-  targetHourUTC: 12,
-  importPath: "./cron-worker.mjs",
-  runFn: "runCronJob",
-});
+// Cron 2: Product spotlight — Saturdays 08:00 UTC
+cron.schedule('0 8 * * 6', async () => {
+  if (!AUTO_GEN_ENABLED) {
+    console.log('[cron] product-spotlight skipped (AUTO_GEN_ENABLED=false)');
+    return;
+  }
+  try {
+    console.log('[cron] product-spotlight starting...');
+    const { runProductSpotlight } = await import('./product-spotlight.mjs');
+    await runProductSpotlight();
+    console.log('[cron] product-spotlight completed');
+  } catch (e) { console.error('[cron] product-spotlight failed:', e); }
+}, { timezone: 'UTC' });
+console.log('[startup] Cron 2 registered: product-spotlight (Sat 08:00 UTC)');
 
-// 2. Product spotlight: Wednesdays at 14:00 UTC
-console.log("[startup] Scheduling product spotlight (Wed 14:00 UTC)...");
-scheduleWeekly({
-  name: "product-spotlight",
-  targetDays: [3], // Wednesday
-  targetHourUTC: 14,
-  importPath: "./product-spotlight.mjs",
-  runFn: "runProductSpotlight",
-});
+// Cron 3: Monthly content refresh — 1st of every month 03:00 UTC
+cron.schedule('0 3 1 * *', async () => {
+  try {
+    console.log('[cron] refresh-monthly starting...');
+    const { refreshMonthly } = await import('./refresh-monthly.mjs');
+    await refreshMonthly();
+    console.log('[cron] refresh-monthly completed');
+  } catch (e) { console.error('[cron] refresh-monthly failed:', e); }
+}, { timezone: 'UTC' });
+console.log('[startup] Cron 3 registered: refresh-monthly (1st of month 03:00 UTC)');
 
-// 3. Product refresh: Sundays at 06:00 UTC
-console.log("[startup] Scheduling product refresh (Sun 06:00 UTC)...");
-scheduleWeekly({
-  name: "product-refresh",
-  targetDays: [0], // Sunday
-  targetHourUTC: 6,
-  importPath: "./product-refresh.mjs",
-  runFn: "runProductRefresh",
-});
+// Cron 4: Quarterly deep refresh — 1st of Jan,Apr,Jul,Oct 04:00 UTC
+cron.schedule('0 4 1 1,4,7,10 *', async () => {
+  try {
+    console.log('[cron] refresh-quarterly starting...');
+    const { refreshQuarterly } = await import('./refresh-quarterly.mjs');
+    await refreshQuarterly();
+    console.log('[cron] refresh-quarterly completed');
+  } catch (e) { console.error('[cron] refresh-quarterly failed:', e); }
+}, { timezone: 'UTC' });
+console.log('[startup] Cron 4 registered: refresh-quarterly (1st of Jan,Apr,Jul,Oct 04:00 UTC)');
+
+// Cron 5: ASIN health check — Sundays 05:00 UTC
+cron.schedule('0 5 * * 0', async () => {
+  try {
+    console.log('[cron] verify-affiliates starting...');
+    const { verifyAffiliateLinks } = await import('./verify-affiliates.mjs');
+    await verifyAffiliateLinks();
+    console.log('[cron] verify-affiliates completed');
+  } catch (e) { console.error('[cron] verify-affiliates failed:', e); }
+}, { timezone: 'UTC' });
+console.log('[startup] Cron 5 registered: verify-affiliates (Sun 05:00 UTC)');
 
 // Handle graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("[startup] SIGTERM received. Shutting down...");
-  server.kill("SIGTERM");
+process.on('SIGTERM', () => {
+  console.log('[startup] SIGTERM received. Shutting down...');
+  server.kill('SIGTERM');
   process.exit(0);
 });
 
-process.on("SIGINT", () => {
-  console.log("[startup] SIGINT received. Shutting down...");
-  server.kill("SIGINT");
+process.on('SIGINT', () => {
+  console.log('[startup] SIGINT received. Shutting down...');
+  server.kill('SIGINT');
   process.exit(0);
 });
